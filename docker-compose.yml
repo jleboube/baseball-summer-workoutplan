@@ -1,0 +1,66 @@
+
+services:
+  workout-calendar:
+    build: .
+    container_name: baseball-workout-calendar
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./www:/usr/share/nginx/html
+      - ./ssl:/etc/nginx/ssl
+      - ./nginx-ssl.conf:/etc/nginx/nginx.conf
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+    networks:
+      - workout-net
+    depends_on:
+      - certbot
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost/health", "-k"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Certbot for Let's Encrypt (optional)
+  certbot:
+    image: certbot/certbot
+    container_name: workout-certbot
+    volumes:
+      - ./ssl:/etc/letsencrypt
+      - ./www:/var/www/certbot
+    command: echo "Certbot container ready"
+    networks:
+      - workout-net
+
+  # Backup service
+  backup:
+    image: alpine:latest
+    container_name: workout-backup
+    volumes:
+      - ./backups:/backups
+      - ./www:/app
+      - ./ssl:/ssl-backup
+    command: |
+      sh -c "
+        echo 'Backup service running...'
+        while true; do
+          # Backup SSL certificates daily
+          if [ -d /ssl-backup/live ]; then
+            cp -r /ssl-backup/live /backups/ssl-backup-$$(date +%Y%m%d) 2>/dev/null || true
+          fi
+          sleep 86400
+        done
+      "
+    restart: unless-stopped
+    networks:
+      - workout-net
+
+networks:
+  workout-net:
+    driver: bridge
+
+volumes:
+  nginx-cache:
+  ssl-data:
